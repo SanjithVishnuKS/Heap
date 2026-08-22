@@ -1,0 +1,4 @@
+project_id = "heap-app"
+
+[functions.ask]
+verify_jwt = true
