@@ -1,44 +1,134 @@
-# Beta Test Plan — Heap (Week 7)
+# Heap 10-Day Validation Sprint
 
-**Goal:** not "do people like it" — specifically, does the no-folders bet survive real, messy use? You're testing the premise, not polishing the UI.
+Goal: validate demand and behavior before building more features. This sprint answers one question: does the capture -> ask -> trust -> act loop create real pull for people who do not already know the product?
 
-## 1. Who to recruit (5–8 people)
-- Target: people who've abandoned Notion/Evernote/Apple Notes because organizing became the actual job — that's the person this app is for
-- Skip friends who'll just be nice. You want people who'll complain.
-- Mix in 1–2 naturally *organized* people too — if it works for them despite not needing it, that's a bonus signal, not required
+## 1. Scope Freeze (Days 0-10)
+- No new feature work.
+- Only allow reliability fixes and bug fixes that block core use.
+- Core loop under test:
+	- Capture a thought quickly
+	- Ask a question later
+	- See grounded answer with sources
+	- Turn answer into action (task handoff)
 
-## 2. What to give them
-- The current prototype
-- One instruction, nothing more: *"Dump anything you'd normally put in Notes or a to-do app here, for two weeks. Don't organize it, don't overthink it — just dump."*
-- Don't explain how the AI retrieval works upfront. Explaining it primes their behavior and quietly ruins the test.
+## 2. Target Testers (5-8 people)
+- 3-5 people who feel "notes apps became organizing work"
+- 1-2 people who are naturally organized and heavy productivity-tool users
+- 1 "cold" user from outside your immediate circle
 
-## 3. Timeline
-- **Day 3:** one-line check-in — "used it at all?" (catches silent drop-off while it's still cheap to fix)
-- **Day 7:** 15-minute call, focused specifically on retrieval quality
-- **Day 14:** exit interview (questions below)
+Recruiting rule: avoid coaching users before testing. You are measuring discoverability and trust, not compliance.
 
-## 4. What to actually measure
-- Captures per person per day — is the capture habit forming
-- **Asks per person per week — this is the real north star.** Capturing without ever asking means the value prop hasn't landed
-- Day-7 return rate — did they come back unprompted
-- Retrieval trust — did they ever get an answer and not believe it
+## 3. Recruitment Script (copy/paste)
+Use this for DM, email, or message:
 
-## 5. Failure signals to watch for
-| Signal | What it means | What to do |
-|---|---|---|
-| Captures drop off after day 3–4 | Capture friction, not an AI problem | Fix capture UX before touching retrieval |
-| People capture but never ask | "Ask" isn't obviously valuable yet | Push it harder in the Today digest, don't add features |
-| Wrong or incomplete answers, more than once per person | Retrieval quality — this is existential | Stop adding features, fix retrieval first |
-| "I just want folders back" | The core bet may be wrong | Take it seriously, don't get defensive about it |
+"I am testing a new notes app called Heap. It is built for messy capture without folders or tagging. I need 10 days of real usage feedback, not polished demo feedback.
 
-## 6. Exit interview — ask these verbatim
-1. "Walk me through the last time you actually used it."
-2. "What's the one thing you almost quit over?"
-3. "Did you ever ask it something and not trust the answer?"
-4. "What did you use before this, and did you go back to it at all?"
-5. "Would you be annoyed if this disappeared tomorrow?" — the real retention question
+What I need from you:
+- Use Heap as your default quick-capture place for 10 days
+- Ask it questions about what you captured when you need context
+- Join one 15-minute check-in and one 20-minute exit call
 
-## 7. Decision point after two weeks
-- **Green — keep building:** 3+ of 5 people are asking it questions weekly without being prompted, and nobody reports a trust-breaking wrong answer
-- **Yellow — fix before continuing:** capture habit is solid but retrieval trust is shaky → spend the next two weeks only on retrieval quality, hold off on Phase 2 features
-- **Red — reconsider the premise:** capture itself never became a habit, or people keep manually re-inventing folders on top of it → sit with that honestly before pushing further
+I am testing behavior, not you. Brutally honest feedback is the goal. Interested?"
+
+## 4. Tester Onboarding Script (Day 1, 5-7 minutes)
+Read this verbatim:
+
+"Thanks for helping. Please use Heap like a scratchpad for real life and work thoughts for the next 10 days.
+
+Rules:
+1. Do not organize anything in advance.
+2. Capture first, clean up never.
+3. When you need something, ask Heap instead of searching manually.
+
+I will not explain every feature because I want to see what is obvious versus confusing. If something feels bad, say it immediately."
+
+## 5. Session Schedule
+- Day 1: onboarding and first capture
+- Day 3: async pulse check (1 question)
+- Day 5-6: 15-minute midpoint call
+- Day 10: 20-minute exit interview
+
+Day 3 pulse message:
+"Did you use Heap at least twice since setup? If no, what got in the way first?"
+
+## 6. Midpoint Session Script (Day 5-6)
+Use this structure:
+1. "Show me the last thing you captured."
+2. "Now ask a question you genuinely need answered from your notes."
+3. "Did you trust that answer? Why or why not?"
+4. "Would you turn this into a task here, or somewhere else?"
+5. "What almost made you stop using it this week?"
+
+Moderator rule: do not rescue users unless fully blocked for more than 30 seconds.
+
+## 7. Exit Interview Script (Day 10)
+Ask in order:
+1. "Walk me through the last real moment Heap helped you."
+2. "When did Heap fail you most?"
+3. "Did you ever doubt an answer because sources felt weak or missing?"
+4. "What did you use instead when Heap was not enough?"
+5. "If Heap disappeared tomorrow, would you care? Why?"
+
+## 8. Success Metrics (track daily)
+Per tester, capture:
+- Captures per day
+- Asks per day
+- Source chip opens per ask session
+- Task handoffs created from Ask
+- Day-3 active (yes/no)
+- Day-7 active (yes/no)
+- Day-10 active (yes/no)
+- Trust breaks: count of "answer felt wrong/unreliable"
+
+Core KPI formulas:
+- Activation rate = testers with at least 3 captures by Day 3 / total testers
+- Ask adoption = testers with at least 3 asks by Day 10 / total testers
+- Trust pass rate = testers with 0 trust breaks / total testers
+- Return rate = testers active on Day 7 / total testers
+
+## 9. Decision Rubric (hard gate on Day 10)
+Green (continue current direction):
+- Activation rate >= 70%
+- Ask adoption >= 50%
+- Trust pass rate >= 80%
+- At least 40% created at least one task from Ask without prompting
+
+Yellow (freeze expansion, improve core loop for 2 weeks):
+- Activation rate >= 70% but Ask adoption < 50%
+- Or trust pass rate is between 60% and 79%
+
+Red (reconsider product direction before more build):
+- Activation rate < 70%
+- Or trust pass rate < 60%
+- Or 3+ testers explicitly ask for manual structure (folders/tags) as a blocker
+
+## 10. What Gets Built Next (based on result)
+- Green:
+	- Improve onboarding and retrieval speed
+	- Keep Tasks only as post-answer action, not full PM suite expansion
+	- Start lightweight growth loop (invite and referral)
+- Yellow:
+	- No new surfaces
+	- Fix trust issues: better source ranking, clearer citations, confidence wording
+	- Re-run a 7-day mini test
+- Red:
+	- Pause feature roadmap
+	- Run 3 deep interviews specifically on failure moments
+	- Decide whether to narrow to pure memory tool or pivot to structured productivity
+
+## 11. Tracking Template
+Create one row per tester:
+
+| Tester | Day 3 Active | Day 7 Active | Day 10 Active | Captures Total | Asks Total | Task Handoffs | Trust Breaks | Would Miss Heap? |
+|---|---|---|---|---:|---:|---:|---:|---|
+| T1 |  |  |  |  |  |  |  |  |
+| T2 |  |  |  |  |  |  |  |  |
+| T3 |  |  |  |  |  |  |  |  |
+| T4 |  |  |  |  |  |  |  |  |
+| T5 |  |  |  |  |  |  |  |  |
+
+## 12. Non-Negotiables for Signal Quality
+- Do not add features during the 10 days.
+- Do not explain hidden product logic before users try.
+- Do not ignore trust failures to chase engagement numbers.
+- Do not treat polite feedback as positive signal unless behavior confirms it.
