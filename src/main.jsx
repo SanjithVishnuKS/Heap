@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, Brain, Check, Clock3, Command, Download, Inbox, Library, Mic, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowUpRight, Brain, CalendarDays, Check, Clock3, Command, Download, Inbox, Library, ListChecks, LogIn, LogOut, Mic, Pencil, Plus, Search, Sparkles, Timer, Trash2, X } from 'lucide-react';
 import './style.css';
+import './theme.css';
+import TaskPanel from './TaskPanel';
+import FocusPanel from './FocusPanel';
+import CalendarPanel from './CalendarPanel';
+import { appConfig, cloudModeEnabled } from './config';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = cloudModeEnabled ? createClient(appConfig.supabaseUrl, appConfig.supabaseAnonKey) : null;
 
 function formatTimestamp(value) {
   const date = new Date(value);
@@ -29,7 +37,7 @@ function readStorage(key, fallback) {
 function loadThoughts() {
   const saved = readStorage('heap-thoughts', []);
   if (!Array.isArray(saved)) return [];
-  return saved.map(item => ({ ...item, createdAt: Number.isNaN(new Date(item.createdAt).getTime()) ? new Date().toISOString() : new Date(item.createdAt).toISOString() }));
+  return saved.map(item => ({ ...item, id: typeof item.id === 'string' && item.id.includes('-') ? item.id : crypto.randomUUID(), createdAt: Number.isNaN(new Date(item.createdAt).getTime()) ? new Date().toISOString() : new Date(item.createdAt).toISOString() }));
 }
 
 function trackEvent(name) {
@@ -41,6 +49,13 @@ function scoreThought(thought, query) {
   const words = query.toLowerCase().split(/\s+/).filter(word => word.length > 2);
   const haystack = thought.text.toLowerCase();
   return words.reduce((score, word) => score + (haystack.includes(word) ? 3 : 0), 0) + (haystack.includes(query.toLowerCase()) ? 4 : 0);
+}
+
+function buildAnswer(results, query) {
+  if (!results.length) return 'I could not find that in your heap yet.';
+  const lead = results[0].text.replace(/[.!?]+$/, '');
+  if (results.length === 1) return `Your heap points to this: ${lead}.`;
+  return `I found ${results.length} connected thoughts about ${query.trim()}. The strongest thread starts with: ${lead}.`;
 }
 
 function App() {
@@ -56,6 +71,12 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [cloudAnswer, setCloudAnswer] = useState(null);
+  const [answerLoading, setAnswerLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMessage, setAuthMessage] = useState('');
   const speechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   useEffect(() => localStorage.setItem('heap-thoughts', JSON.stringify(thoughts)), [thoughts]);
@@ -67,6 +88,10 @@ function App() {
         event.preventDefault();
         document.querySelector('#capture-input')?.focus();
       }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        document.querySelector('#ask-input')?.focus();
+      }
     };
     const handleInstall = event => { event.preventDefault(); setInstallPrompt(event); };
     window.addEventListener('keydown', handleShortcut);
@@ -76,6 +101,39 @@ function App() {
       window.removeEventListener('beforeinstallprompt', handleInstall);
     };
   }, []);
+  useEffect(() => {
+    if (!query.trim() || !cloudModeEnabled) {
+      setCloudAnswer(null);
+      return undefined;
+    }
+    const timeout = window.setTimeout(async () => {
+      setAnswerLoading(true);
+      const { data, error } = await supabase.functions.invoke(appConfig.askFunctionName, { body: { query } });
+      setCloudAnswer(error ? { error: 'Cloud retrieval is unavailable. Showing local sources.' } : data);
+      setAnswerLoading(false);
+    }, 450);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
+  useEffect(() => {
+    if (!supabase) return undefined;
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => { if (mounted) setUser(data.user); });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user || null));
+    return () => { mounted = false; listener.subscription.unsubscribe(); };
+  }, []);
+  useEffect(() => {
+    if (!user || !supabase) return;
+    supabase.from('thoughts').select('id, body, created_at, updated_at').order('created_at', { ascending: false }).then(({ data }) => {
+      if (!data?.length) {
+        if (thoughts.length) {
+          const rows = thoughts.map(thought => ({ id: thought.id, user_id: user.id, body: thought.text, created_at: thought.createdAt }));
+          supabase.from('thoughts').upsert(rows).then(() => {});
+        }
+        return;
+      }
+      setThoughts(data.map((item, index) => ({ id: item.id, text: item.body, createdAt: item.created_at, updatedAt: item.updated_at, tone: ['coral', 'blue', 'green', 'yellow'][index % 4] })));
+    });
+  }, [user]);
 
   const results = useMemo(() => {
     if (!query.trim()) return thoughts;
@@ -86,7 +144,9 @@ function App() {
   function capture(event) {
     event.preventDefault();
     if (!draft.trim()) return;
-    setThoughts([{ id: Date.now(), text: draft.trim(), createdAt: new Date().toISOString(), tone: ['coral', 'blue', 'green', 'yellow'][thoughts.length % 4] }, ...thoughts]);
+    const thought = { id: crypto.randomUUID(), text: draft.trim(), createdAt: new Date().toISOString(), tone: ['coral', 'blue', 'green', 'yellow'][thoughts.length % 4] };
+    setThoughts([thought, ...thoughts]);
+    if (user && supabase) supabase.from('thoughts').insert({ id: thought.id, user_id: user.id, body: thought.text, created_at: thought.createdAt }).then(({ error }) => { if (error) setToast('Saved locally; cloud sync needs attention'); });
     trackEvent('capture_made');
     setDraft('');
     setToast('Dropped into your heap');
@@ -98,6 +158,15 @@ function App() {
     if (!query.trim()) return;
     setAsks(value => value + 1);
     trackEvent('ask_made');
+  }
+
+  function makeTaskFromQuestion() {
+    const tasks = readStorage('heap-tasks', []);
+    const nextTask = { id: Date.now(), text: query.trim(), priority: 'medium', due: '', completed: false };
+    localStorage.setItem('heap-tasks', JSON.stringify([nextTask, ...(Array.isArray(tasks) ? tasks : [])]));
+    setActiveView('tasks');
+    setToast('Question added to Tasks');
+    setTimeout(() => setToast(''), 2200);
   }
 
   function clearAll() {
@@ -150,6 +219,7 @@ function App() {
     event.preventDefault();
     if (!editingText.trim()) return;
     setThoughts(items => items.map(item => item.id === id ? { ...item, text: editingText.trim(), updatedAt: new Date().toISOString() } : item));
+    if (user && supabase) supabase.from('thoughts').update({ body: editingText.trim(), updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
     setEditingId(null);
     setEditingText('');
   }
@@ -157,7 +227,21 @@ function App() {
   function deleteThought(id) {
     if (!window.confirm('Delete this thought?')) return;
     setThoughts(items => items.filter(item => item.id !== id));
+    if (user && supabase) supabase.from('thoughts').delete().eq('id', id).then(() => {});
     trackEvent('thought_deleted');
+  }
+
+  async function signIn(event) {
+    event.preventDefault();
+    if (!supabase || !authEmail.trim()) return;
+    const { error } = await supabase.auth.signInWithOtp({ email: authEmail.trim(), options: { emailRedirectTo: window.location.origin } });
+    setAuthMessage(error ? error.message : 'Check your email for a sign-in link.');
+  }
+
+  async function signOut() {
+    await supabase?.auth.signOut();
+    setAuthOpen(false);
+    setAuthMessage('');
   }
 
   async function installApp() {
@@ -174,16 +258,23 @@ function App() {
       <nav>
         <button className={activeView === 'today' ? 'nav-item active' : 'nav-item'} onClick={clearAll}><Inbox size={17} /><span>Today</span><b>{thoughts.filter(item => isToday(item.createdAt)).length}</b></button>
         <button className={activeView === 'all' ? 'nav-item active' : 'nav-item'} onClick={() => { setActiveView('all'); setQuery(''); }}><Library size={17} /><span>Everything</span><b>{thoughts.length}</b></button>
+        <button className={activeView === 'tasks' ? 'nav-item active' : 'nav-item'} onClick={() => { setActiveView('tasks'); setQuery(''); }}><ListChecks size={17} /><span>Tasks</span></button>
+        <button className={activeView === 'focus' ? 'nav-item active' : 'nav-item'} onClick={() => { setActiveView('focus'); setQuery(''); }}><Timer size={17} /><span>Focus</span></button>
+        <button className={activeView === 'calendar' ? 'nav-item active' : 'nav-item'} onClick={() => { setActiveView('calendar'); setQuery(''); }}><CalendarDays size={17} /><span>Calendar</span></button>
       </nav>
-      <div className="sidebar-foot"><div className="status-dot"></div><span>Local beta</span><span className="sync">Synced</span></div>
+      <div className="sidebar-foot"><div className="status-dot"></div><span>{user ? user.email : cloudModeEnabled ? 'Cloud ready' : 'Local beta'}</span>{user ? <button className="auth-link" onClick={signOut} title="Sign out"><LogOut size={13} /></button> : cloudModeEnabled ? <button className="auth-link" onClick={() => setAuthOpen(true)} title="Sign in"><LogIn size={13} /></button> : <span className="sync">Local</span>}</div>
     </aside>
 
     <main className="main-content">
       <header className="topbar"><div><p className="eyebrow">{query ? 'Searching your heap' : formatToday()}</p><h1>{query ? 'Here is what I found' : 'Good morning, Alex.'}</h1></div><div className="top-actions"><button className="export-btn" onClick={exportThoughts} title="Export your thoughts"><Download size={15} /> Export</button>{installPrompt && <button className="export-btn install-btn" onClick={installApp} title="Install Heap"><Download size={15} /> Install</button>}<div className="profile">AS</div></div></header>
       <section className="ask-zone">
-        <form className="ask-box" onSubmit={ask}><Search size={21} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Ask your heap anything..." autoComplete="off" /><span className="ask-hint"><Command size={13} /> K</span>{query && <button type="button" className="clear-btn" onClick={clearAll}><X size={16} /></button>}</form>
+        <form className="ask-box" onSubmit={ask}><Search size={21} /><input id="ask-input" value={query} onChange={event => setQuery(event.target.value)} placeholder="Ask your heap anything..." autoComplete="off" /><span className="ask-hint"><Command size={13} /> K</span>{query && <button type="button" className="clear-btn" onClick={clearAll}><X size={16} /></button>}</form>
         {query && <p className="result-meta">{results.length} {results.length === 1 ? 'thought' : 'thoughts'} found <span>·</span> based on your words, not folders</p>}
       </section>
+
+      {query && <section className="answer-card"><div className="answer-heading"><span className="answer-badge"><Sparkles size={14} /> Heap answer</span><span className="answer-confidence">{answerLoading ? 'Searching your memory...' : cloudAnswer?.error ? 'Local sources' : results.length ? 'Grounded in your thoughts' : 'No source found'}</span></div><p className="answer-text">{cloudAnswer?.answer || buildAnswer(results, query)}</p>{results.length > 0 && <div className="answer-sources"><span>Sources</span>{results.slice(0, 3).map(thought => <span className="source-chip" key={thought.id}>{formatTimestamp(thought.createdAt)} · {thought.text.slice(0, 54)}{thought.text.length > 54 ? '...' : ''}</span>)}</div>}<button className="answer-task" onClick={makeTaskFromQuestion}><Plus size={14} /> Turn this into a task</button></section>}
+
+      {activeView === 'tasks' ? <TaskPanel /> : activeView === 'focus' ? <FocusPanel /> : activeView === 'calendar' ? <CalendarPanel /> : <>
 
       {!query && <section className="signal"><div className="signal-icon"><Sparkles size={19} /></div><div><strong>A small signal from your heap</strong><p>You have mentioned <em>launch</em> 3 times this week. Want to keep following that thread?</p></div><button onClick={() => setQuery('launch')}>Explore <ArrowUpRight size={15} /></button></section>}
       {!query && showNudge && nudgeThought && <section className="weekly-nudge"><div><span className="nudge-label"><Clock3 size={13} /> Still here</span><p>{nudgeThought.text}</p></div><button onClick={() => { localStorage.setItem('heap-nudge-dismissed', new Date().toISOString().slice(0, 10)); setShowNudge(false); }} title="Dismiss reminder"><X size={16} /></button></section>}
@@ -195,11 +286,13 @@ function App() {
         </div>
         <aside className="right-rail"><div className="rail-card"><div className="rail-title"><span>Beta pulse</span><span className="live"><i></i> Live</span></div><div className="metric"><strong>{thoughts.length}</strong><span>thoughts captured</span></div><div className="metric"><strong>{asks}</strong><span>questions asked</span></div><div className="progress-label"><span>Day 4 of 14</span><span>beta</span></div><div className="progress"><i></i></div></div><div className="rail-note"><Sparkles size={16} /><p>Keep dumping. The value compounds when you stop organizing.</p></div></aside>
       </section>
+      </>}
     </main>
 
     <form className="capture-dock" onSubmit={capture}><div className="dock-icon"><Plus size={20} /></div><input id="capture-input" value={draft} onChange={event => setDraft(event.target.value)} placeholder="Drop a thought here... no title, no folder" /><button className={listening ? 'voice-btn listening' : 'voice-btn'} type="button" onClick={toggleVoice} title={speechSupported ? 'Capture with your voice' : 'Voice capture unavailable'}><Mic size={17} /></button><button type="submit">Capture <ArrowUpRight size={15} /></button></form>
     {toast && <div className="toast"><Check size={15} /> {toast}</div>}
     {showOnboarding && <div className="onboarding-backdrop"><section className="onboarding"><button className="onboarding-close" onClick={completeOnboarding} title="Close"><X size={17} /></button><span className="onboarding-mark"><Brain size={22} /></span><p className="eyebrow">A quieter place for your mind</p><h2>What's on your mind right now?</h2><p>Drop it here. No title, no folder, no need to make it neat. Heap will help you find it later.</p><button className="start-btn" onClick={completeOnboarding}>Start dumping <ArrowUpRight size={15} /></button></section></div>}
+    {authOpen && <div className="onboarding-backdrop"><section className="onboarding auth-modal"><button className="onboarding-close" onClick={() => setAuthOpen(false)} title="Close"><X size={17} /></button><span className="onboarding-mark"><LogIn size={21} /></span><p className="eyebrow">Sync your heap</p><h2>Keep your thoughts with you.</h2><p>Sign in with a magic link to sync this heap across devices.</p><form onSubmit={signIn}><input className="auth-input" type="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} placeholder="you@example.com" required /><button className="start-btn" type="submit">Send magic link <ArrowUpRight size={15} /></button></form>{authMessage && <p className="auth-message">{authMessage}</p>}</section></div>}
   </div>;
 }
 

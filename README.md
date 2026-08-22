@@ -2,6 +2,10 @@
 
 Heap is a local-first beta prototype for the no-folders note-taking premise: capture anything, then ask for it later in natural language.
 
+## Visual direction
+
+Heap uses a “Coastal Morning” palette: seafoam and misty blue create a calm base, deep teal carries readable structure, coral marks action, and amber highlights signals. The direction follows Figma’s guidance on color harmony, hierarchy, complementary contrast, and accessibility. Reference: [Figma color combinations](https://www.figma.com/resource-library/color-combinations/).
+
 ## Run locally
 
 ```bash
@@ -13,25 +17,17 @@ Open the local URL printed by Vite. Captures and beta metrics persist in the bro
 
 ## What is implemented
 
-- Frictionless capture dock with no title, folder, or tagging step
-- Today and Everything views
-- Natural-language-style retrieval using transparent keyword scoring
-- Evidence labels on matching thoughts to make retrieval trust testable
-- A small “signal” prompt to encourage asking behavior
-- First-run onboarding prompt for the cold-start moment
-- Plain-text export for trust and portability
-- Weekly “Still here” reminder for an older untouched thought
-- Beta pulse metrics for captures and asks
-- Local event log for `capture_made`, `ask_made`, and `digest_viewed`
-- Responsive desktop and mobile layout
-- Cmd/Ctrl+N keyboard capture shortcut
-- Install prompt when the browser supports PWA installation
+- Calendar workspace with local date-based time blocks and durations
 
 This is intentionally a prototype. Data and event tracking currently stay in the browser. Production AI retrieval should move into a server-side endpoint with embeddings, source citations, authentication, encrypted storage, and error logging before inviting real users. The weekly reminder is date-aware locally and selects thoughts that have been untouched for at least seven days.
 
 ## Cloud handoff
 
 The `supabase/` directory contains a migration with per-user row-level security, pgvector storage, and a protected `ask` edge-function boundary. Run the migration in a Supabase project, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` only for the client, and store model-provider secrets in Supabase project secrets. The checked-in edge function intentionally returns HTTP 501 until embedding generation is configured, so the prototype cannot silently present fake AI answers.
+
+The `ask` function now uses `text-embedding-3-small` for query embeddings and `gpt-4o-mini` for concise source-grounded answers. Activate it with `supabase secrets set OPENAI_API_KEY=...` and `supabase functions deploy ask` after enabling Supabase Auth and syncing captured thoughts into `public.thoughts`. Until a signed-in sync path is connected, the browser continues to use the local retrieval fallback.
+
+When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are present, the sidebar enables passwordless email sign-in. Signed-in users load cloud thoughts, upload local thoughts into an empty cloud heap, and sync new, edited, or deleted thoughts. Without those variables, Heap remains fully local.
 
 ## Publish the current prototype
 
